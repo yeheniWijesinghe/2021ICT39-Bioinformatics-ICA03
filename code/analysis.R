@@ -1,6 +1,4 @@
-# ======================================================================
 # SETUP
-# ======================================================================
 # ---- libraries ----
 # dplyr is loaded LAST so its functions are not masked by Bioconductor ones.
 suppressPackageStartupMessages({
@@ -14,7 +12,7 @@ suppressPackageStartupMessages({
   library(tidyr)
   library(readr)
   library(stringr)
-  library(dplyr)
+  library(dplyr
 })
 set.seed(2026)  # makes random sampling and bootstrapping reproducible
 
@@ -66,9 +64,7 @@ save_gg <- function(p, name, w = 8, h = 5.5) {
 }
 
 
-# ======================================================================
 # DATA IMPORT (NCBI GENBANK)
-# ======================================================================
 
 raw_file <- file.path(data_dir, "PRSV_CP_raw.gb")
 term <- '"Papaya ringspot virus"[Organism] AND "coat protein"[Title] AND 700:1100[SLEN]'
