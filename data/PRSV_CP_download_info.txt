@@ -1,0 +1,4 @@
+Query: "Papaya ringspot virus"[Organism] AND "coat protein"[Title] AND 700:1100[SLEN]
+Records found: 1020
+Downloaded: 1000
+Date: 2026-11-13 21:12:33.943896
