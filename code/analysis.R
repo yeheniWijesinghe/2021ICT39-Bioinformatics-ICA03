@@ -1,4 +1,3 @@
-# SETUP
 # ---- libraries ----
 # dplyr is loaded LAST so its functions are not masked by Bioconductor ones.
 suppressPackageStartupMessages({
@@ -106,3 +105,59 @@ parse_record <- function(r) {
 }
 info <- bind_rows(lapply(records, parse_record))
 cat("GenBank records read:", nrow(info), "\n")
+
+
+# CLEANING AND QUALITY CONTROL
+
+info <- info |>
+  distinct(id, .keep_all = TRUE) |>
+  mutate(length      = nchar(seq),
+         acgt        = str_count(seq, "[ACGT]"),
+         ambig_ok    = length > 0 & (1 - acgt / pmax(length, 1)) < 0.01,
+         country     = ifelse(grepl("Hawaii", country_raw, ignore.case = TRUE), "USA (Hawaii)",
+                              str_trim(sub(":.*$", "", country_raw))),
+         region      = ifelse(country == "USA (Hawaii)", "Americas", unname(region_lookup[country])),
+         has_cp      = grepl("coat protein", definition, ignore.case = TRUE),
+         has_country = !is.na(country_raw),
+         known_region = !is.na(region),
+         length_ok   = length >= min_len & length <= max_len)
+
+passed <- info |> filter(has_cp, has_country, known_region, length_ok, ambig_ok)
+
+# Balance: at most max_per_country per country, then drop small regions
+sampled <- passed |> group_by(country) |> slice_sample(n = max_per_country) |> ungroup()
+big_regions <- count(sampled, region) |> filter(n >= min_per_region) |> pull(region)
+kept <- sampled |>
+  filter(region %in% big_regions) |>
+  mutate(label = paste0(gsub("[^A-Za-z]", "", country), "_", id)) |>
+  arrange(region, country, id)
+
+steps <- tibble(
+  step = c("GenBank records downloaded (unique)", "Title mentions coat protein",
+           "+ country recorded", "+ country in a known region",
+           paste0("+ length ", min_len, "-", max_len, " bp"), "+ <1% ambiguous bases",
+           paste0("After sampling max ", max_per_country, " per country and keeping regions with >= ",
+                  min_per_region, " (final)")),
+  sequences = c(nrow(info), sum(info$has_cp), sum(info$has_cp & info$has_country),
+                sum(info$has_cp & info$has_country & info$known_region),
+                sum(info$has_cp & info$has_country & info$known_region & info$length_ok),
+                nrow(passed), nrow(kept)))
+knitr::kable(steps, caption = "Quality-control filtering")
+
+# Stop with a clear explanation if too few regions are left to compare
+if (n_distinct(kept$region) < 2) {
+  stop("Fewer than 2 regions passed QC - nothing to compare.\n",
+       paste(capture.output(print(as.data.frame(steps))), collapse = "\n"), "\n",
+       "Sequences per region before dropping small regions:\n",
+       paste(capture.output(print(as.data.frame(count(sampled, region)))), collapse = "\n"))
+}
+
+# Countries with no region in the lookup (add them above if important)
+unknown <- info |> filter(has_cp, has_country, !known_region) |> count(country, sort = TRUE)
+if (nrow(unknown) > 0) knitr::kable(unknown, caption = "Countries not assigned to a region (excluded)")
+
+write_csv(dplyr::select(kept, label, id, country, region, host, year, length, definition),
+          file.path(res_dir, "sequences_used.csv"))
+seqs <- DNAStringSet(setNames(kept$seq, kept$label))
+writeXStringSet(seqs, file.path(data_dir, "PRSV_CP_clean.fasta"))
+
