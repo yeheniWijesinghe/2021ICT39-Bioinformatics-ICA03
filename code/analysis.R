@@ -12,7 +12,7 @@ suppressPackageStartupMessages({
   library(tidyr)
   library(readr)
   library(stringr)
-  library(dplyr
+  library(dplyr)
 })
 set.seed(2026)  # makes random sampling and bootstrapping reproducible
 
