@@ -69,11 +69,7 @@ save_gg <- function(p, name, w = 8, h = 5.5) {
 # ======================================================================
 # DATA IMPORT (NCBI GENBANK)
 # ======================================================================
-# Records are downloaded in **GenBank format** (not plain FASTA) because that
-# format includes the **country** where each virus sample was collected. The
-# download is saved in `data/`. If the file already exists it is reused, so the
-# analysis always runs on the same data (GenBank grows every day).
-# ---- download ----
+
 raw_file <- file.path(data_dir, "PRSV_CP_raw.gb")
 term <- '"Papaya ringspot virus"[Organism] AND "coat protein"[Title] AND 700:1100[SLEN]'
 
