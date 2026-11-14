@@ -319,7 +319,10 @@ use   <- reg != "Hawaii (reference)"
 Dm_r  <- Dm[use, use]
 reg_r <- reg[use]
 
-
+# Every pair of sequences: same region or different regions?
+idx   <- which(upper.tri(Dm_r), arr.ind = TRUE)
+pairs <- tibble(distance = Dm_r[idx],
+                type = ifelse(reg_r[idx[, 1]] == reg_r[idx[, 2]], "Same region", "Different regions"))
 
 pairs |> group_by(type) |>
   summarise(n_pairs = n(), mean = mean(distance), median = median(distance),
@@ -344,7 +347,7 @@ save_gg(p_hist, "fig3_distance_histogram.png", h = 4.5)
 ```{r region-heatmap, fig.height = 5.5}
 # Mean distance between every pair of regions (diagonal = within a region)
 reg_levels <- sort(unique(reg_r))
-reg_df <- expand.grid(region1 = reg_levels, region2 = reg_levels, stringsAsFactors = FALSE)
+reg_ <- expand.grid(region1 = reg_levels, region2 = reg_levels, stringsAsFactors = FALSE)
 reg_df$mean_distance <- mapply(function(a, b) {
   m <- Dm_r[reg_r == a, reg_r == b, drop = FALSE]
   if (a == b) mean(m[upper.tri(m)]) else mean(m)
