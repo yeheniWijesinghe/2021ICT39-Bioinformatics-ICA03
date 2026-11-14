@@ -319,10 +319,7 @@ use   <- reg != "Hawaii (reference)"
 Dm_r  <- Dm[use, use]
 reg_r <- reg[use]
 
-# Every pair of sequences: same region or different regions?
-idx   <- which(upper.tri(Dm_r), arr.ind = TRUE)
-pairs <- tibble(distance = Dm_r[idx],
-                type = ifelse(reg_r[idx[, 1]] == reg_r[idx[, 2]], "Same region", "Different regions"))
+
 
 pairs |> group_by(type) |>
   summarise(n_pairs = n(), mean = mean(distance), median = median(distance),
