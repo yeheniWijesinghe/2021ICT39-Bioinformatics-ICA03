@@ -1,0 +1,13 @@
+GenBank records downloaded: 1000; sequences analysed: 86 from 22 countries in 5 regions
+Regions: Africa (6), Americas (46), East Asia (6), South Asia (10), Southeast Asia (18)
+Sri Lankan sequences analysed: 0
+Alignment length: 1064 columns; after trimming: 858
+Sequence length: median 850 bp (range 757-948); GC: mean 41.0%
+GC by region, Kruskal-Wallis: chi2 = 24.51, df = 4, p = 6.3e-05
+K2P same region: mean 7.78%; different regions: mean 12.33%
+Wilcoxon (different > same region): W = 2581685, p = 2.36e-273
+Overall max K2P distance (regional sequences): 22.52%
+Hawaiian HA reference (X67673) CP extracted: TRUE (948 bp)
+Hawaiian reference sequences: 1
+Mean identity to Hawaiian strain by region: South Asia 87.6%, Southeast Asia 90.0%, East Asia 91.0%, Americas 94.3%, Africa 96.5%
+Identity to Hawaii, Kruskal-Wallis: chi2 = 64.13, df = 4, p = 3.92e-13

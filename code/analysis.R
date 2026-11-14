@@ -365,3 +365,41 @@ if (has_hawaii) {
     theme_bw()
   save_gg(p_hi, "fig6_identity_to_hawaii.png", h = 4.5)
 }
+
+# SUMMARY NUMBERS FOR THE REPORT
+# ---- key-numbers ----
+same <- pairs$distance[pairs$type == "Same region"]
+diff <- pairs$distance[pairs$type == "Different regions"]
+
+key <- c(
+  sprintf("GenBank records downloaded: %d; sequences analysed: %d from %d countries in %d regions",
+          nrow(info), nrow(kept), n_distinct(kept$country), length(reg_levels)),
+  paste("Regions:", paste(sprintf("%s (%d)", count(kept, region)$region, count(kept, region)$n), collapse = ", ")),
+  sprintf("Sri Lankan sequences analysed: %d", sum(kept$country == "Sri Lanka")),
+  sprintf("Alignment length: %d columns; after trimming: %d", ncol(aln_mat), sum(keep_cols)),
+  sprintf("Sequence length: median %d bp (range %d-%d); GC: mean %.1f%%",
+          as.integer(median(kept$length)), min(kept$length), max(kept$length), 100 * mean(kept$gc)),
+  sprintf("GC by region, Kruskal-Wallis: chi2 = %.2f, df = %d, p = %.3g",
+          kw_gc$statistic, as.integer(kw_gc$parameter), kw_gc$p.value),
+  sprintf("K2P same region: mean %.2f%%; different regions: mean %.2f%%", 100 * mean(same), 100 * mean(diff)),
+  sprintf("Wilcoxon (different > same region): W = %.0f, p = %.3g", wilcox_reg$statistic, wilcox_reg$p.value),
+  sprintf("Overall max K2P distance (regional sequences): %.2f%%", 100 * max(Dm_r)),
+  sprintf("Hawaiian HA reference (X67673) CP extracted: %s (%d bp)", has_ref, nchar(ha_cp))
+)
+if (has_hawaii) {
+  hi_sum <- ident |> group_by(region) |> summarise(m = mean(identity)) |> arrange(m)
+  key <- c(key,
+    sprintf("Hawaiian reference sequences: %d", sum(is_hi)),
+    paste("Mean identity to Hawaiian strain by region:",
+          paste(sprintf("%s %.1f%%", hi_sum$region, hi_sum$m), collapse = ", ")),
+    sprintf("Identity to Hawaii, Kruskal-Wallis: chi2 = %.2f, df = %d, p = %.3g",
+            kw_hi$statistic, as.integer(kw_hi$parameter), kw_hi$p.value))
+}
+writeLines(key, file.path(res_dir, "key_numbers.txt"))
+cat(key, sep = "\n")
+
+
+# REPRODUCIBILITY
+# ---- session-info ----
+writeLines(capture.output(sessionInfo()), file.path(res_dir, "session_info.txt"))
+sessionInfo()

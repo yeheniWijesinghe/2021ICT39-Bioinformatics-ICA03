@@ -1,0 +1,26 @@
+region1,region2,mean_distance
+Africa,Africa,0.024080049555657086
+Americas,Africa,0.06842637351850422
+East Asia,Africa,0.10577036679954392
+South Asia,Africa,0.1366191075947261
+Southeast Asia,Africa,0.11891670235027435
+Africa,Americas,0.06842637351850422
+Americas,Americas,0.07467352559742536
+East Asia,Americas,0.11594040910162927
+South Asia,Americas,0.14995516842001758
+Southeast Asia,Americas,0.12631095553763358
+Africa,East Asia,0.10577036679954392
+Americas,East Asia,0.11594040910162927
+East Asia,East Asia,0.07819394194908319
+South Asia,East Asia,0.14542084479025008
+Southeast Asia,East Asia,0.09223118790840619
+Africa,South Asia,0.1366191075947261
+Americas,South Asia,0.14995516842001758
+East Asia,South Asia,0.14542084479025008
+South Asia,South Asia,0.1272615291717648
+Southeast Asia,South Asia,0.1498094447912826
+Africa,Southeast Asia,0.11891670235027435
+Americas,Southeast Asia,0.12631095553763358
+East Asia,Southeast Asia,0.09223118790840619
+South Asia,Southeast Asia,0.1498094447912826
+Southeast Asia,Southeast Asia,0.08966655925555587
