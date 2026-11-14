@@ -161,3 +161,207 @@ write_csv(dplyr::select(kept, label, id, country, region, host, year, length, de
 seqs <- DNAStringSet(setNames(kept$seq, kept$label))
 writeXStringSet(seqs, file.path(data_dir, "PRSV_CP_clean.fasta"))
 
+
+# EXPLORATORY DATA ANALYSIS
+
+knitr::kable(count(kept, region, country), caption = "Sequences analysed per region and country")
+
+p_counts <- ggplot(count(kept, region), aes(reorder(region, n), n)) +
+  geom_col(fill = "#4c72b0") + coord_flip() +
+  labs(x = NULL, y = "Number of sequences", title = "PRSV CP sequences per region (after QC)") +
+  theme_bw()
+save_gg(p_counts, "fig1_sequences_per_region.png", h = 4.5)
+
+# ---- eda-gc ----
+kept <- kept |> mutate(gc = as.numeric(letterFrequency(seqs, "GC", as.prob = TRUE)))
+
+p_gc <- ggplot(kept, aes(reorder(region, gc, FUN = median), 100 * gc)) +
+  geom_boxplot(outlier.shape = NA, fill = "grey90") +
+  geom_jitter(width = 0.15, size = 1.2, alpha = 0.7) + coord_flip() +
+  labs(x = NULL, y = "GC content (%)", title = "GC content of the CP gene by region") +
+  theme_bw()
+save_gg(p_gc, "fig2_gc_by_region.png", h = 4.5)
+
+# Does GC content differ between regions? (non-parametric: small groups)
+kw_gc <- kruskal.test(gc ~ factor(region), data = kept)
+kw_gc
+
+
+# HAWAIIAN REFERENCE STRAIN
+
+ref_file  <- file.path(data_dir, "PRSV_HA_X67673_genome.fasta")
+ref_label <- "Hawaii_HA_X67673.1"
+if (!file.exists(ref_file)) {
+  writeLines(entrez_fetch(db = "nuccore", id = "X67673", rettype = "fasta"), ref_file)
+}
+genome <- readDNAStringSet(ref_file)
+
+# Align the genome with the longest CP sequence; keep the genome part that
+# lines up with it (from the first to the last aligned CP base)
+query <- seqs[which.max(width(seqs))]
+pair  <- AlignSeqs(OrientNucleotides(c(query, genome), verbose = FALSE),
+                   verbose = FALSE, processors = 1)
+pm    <- as.matrix(pair)
+cols  <- which(!pm[1, ] %in% c("-", "."))
+ha_cp <- gsub("[-.]", "", paste(pm[2, min(cols):max(cols)], collapse = ""))
+
+has_ref <- nchar(ha_cp) >= 700 && nchar(ha_cp) <= 1100
+cat("Hawaiian HA CP region extracted:", nchar(ha_cp), "bp\n")
+if (!has_ref) warning("Could not extract the CP region from X67673 - Hawaii comparison skipped.")
+
+seqs_aln <- if (has_ref) c(seqs, DNAStringSet(setNames(ha_cp, ref_label))) else seqs
+
+# Lookup tables: label -> region / country (the reference gets its own group)
+region_of  <- c(setNames(kept$region, kept$label), setNames("Hawaii (reference)", ref_label))
+country_of <- c(setNames(kept$country, kept$label), setNames("USA (Hawaii)", ref_label))
+
+
+# MULTIPLE SEQUENCE ALIGNMENT
+
+
+seqs_o <- OrientNucleotides(seqs_aln, verbose = FALSE)
+aln    <- AlignSeqs(seqs_o, verbose = FALSE, processors = 1)
+
+aln_mat   <- as.matrix(aln)
+keep_cols <- colMeans(aln_mat == "-" | aln_mat == ".") <= 0.5
+aln_trim  <- DNAStringSet(apply(aln_mat[, keep_cols], 1, paste0, collapse = ""))
+names(aln_trim) <- names(aln)
+writeXStringSet(aln_trim, file.path(res_dir, "PRSV_CP_alignment.fasta"))
+cat("Alignment length:", ncol(aln_mat), "columns; after trimming:", sum(keep_cols), "\n")
+
+# Read the alignment into ape's format for distances and trees
+dna <- read.dna(file.path(res_dir, "PRSV_CP_alignment.fasta"), format = "fasta")
+reg <- unname(region_of[rownames(dna)])
+stopifnot("Labels in alignment do not match the sequence table" = !anyNA(reg))
+
+
+# GENETIC DISTANCES: ARE STRAINS GROUPED BY REGION?
+
+Dm <- as.matrix(dist.dna(dna, model = "K80", pairwise.deletion = TRUE))
+if (anyNA(Dm) || any(!is.finite(Dm))) stop("Some distances could not be computed.")
+Dm[Dm < 0] <- 0  # identical sequences can give -0 from rounding
+
+# H1 uses the regional sequences only (the Hawaiian reference is left out)
+use   <- reg != "Hawaii (reference)"
+Dm_r  <- Dm[use, use]
+reg_r <- reg[use]
+
+# Every pair of sequences: same region or different regions?
+idx   <- which(upper.tri(Dm_r), arr.ind = TRUE)
+pairs <- tibble(distance = Dm_r[idx],
+                type = ifelse(reg_r[idx[, 1]] == reg_r[idx[, 2]], "Same region", "Different regions"))
+
+pairs |> group_by(type) |>
+  summarise(n_pairs = n(), mean = mean(distance), median = median(distance),
+            max = max(distance)) |>
+  knitr::kable(digits = 4, caption = "K2P distances within and between regions")
+
+# H1: are sequences from different regions more distant? (one-sided Wilcoxon test)
+wilcox_reg <- wilcox.test(distance ~ type, data = pairs, alternative = "greater")
+wilcox_reg
+
+# ---- distance-histogram ----
+p_hist <- ggplot(pairs, aes(100 * distance, fill = type)) +
+  geom_histogram(bins = 50, alpha = 0.7, position = "identity") +
+  scale_fill_manual(values = c("Same region" = "#1b9e77", "Different regions" = "#d95f02")) +
+  labs(x = "K2P distance (%)", y = "Number of sequence pairs", fill = NULL,
+       title = "CP gene distances within vs between regions") +
+  theme_bw() + theme(legend.position = "top")
+save_gg(p_hist, "fig3_distance_histogram.png", h = 4.5)
+
+# ---- region-heatmap ----
+# Mean distance between every pair of regions (diagonal = within a region)
+reg_levels <- sort(unique(reg_r))
+reg_df <- expand.grid(region1 = reg_levels, region2 = reg_levels, stringsAsFactors = FALSE)
+reg_df$mean_distance <- mapply(function(a, b) {
+  m <- Dm_r[reg_r == a, reg_r == b, drop = FALSE]
+  if (a == b) mean(m[upper.tri(m)]) else mean(m)
+}, reg_df$region1, reg_df$region2)
+write_csv(reg_df, file.path(res_dir, "mean_distance_between_regions.csv"))
+
+p_heat <- ggplot(reg_df, aes(region1, region2, fill = 100 * mean_distance)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = sprintf("%.1f", 100 * mean_distance),
+                colour = mean_distance > median(mean_distance)), size = 3.2,
+            show.legend = FALSE) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "black")) +
+  scale_fill_gradient(low = "#deebf7", high = "#08306b") +
+  labs(x = NULL, y = NULL, fill = "Mean K2P\ndistance (%)",
+       title = "Mean CP distance within and between regions") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+save_gg(p_heat, "fig4_region_distance_heatmap.png", h = 5.5)
+
+
+# PHYLOGENETIC TREE (NEIGHBOUR-JOINING WITH BOOTSTRAP)
+
+# ---- nj-tree ----
+# NJ tree on K2P distances; njs() copes with any missing distances
+nj_fun <- function(x) {
+  d <- dist.dna(x, model = "K80", pairwise.deletion = TRUE)
+  if (anyNA(d)) njs(d) else nj(d)
+}
+tree <- nj_fun(dna)
+
+# Bootstrap: resample alignment columns n_boot times and rebuild the tree
+bs <- boot.phylo(tree, dna, nj_fun, B = n_boot, quiet = TRUE)
+tree$node.label <- round(100 * bs / n_boot)
+tree_rooted <- ladderize(midpoint(tree, node.labels = "support"))
+write.tree(tree_rooted, file.path(res_dir, "tree_NJ_bootstrap.nwk"))
+
+tree_levels <- sort(unique(reg))  # includes the Hawaiian reference, if present
+region_cols <- setNames(hcl.colors(length(tree_levels), "Dark 3"), tree_levels)
+
+draw_tree <- function() {
+  tips <- tree_rooted$tip.label
+  plot(tree_rooted, cex = 0.5, no.margin = TRUE, label.offset = 0.001,
+       tip.color = region_cols[region_of[tips]],
+       font = ifelse(country_of[tips] %in% c("Sri Lanka", "USA (Hawaii)"), 2, 1))  # bold = Sri Lanka / Hawaii
+  s <- suppressWarnings(as.numeric(tree_rooted$node.label))
+  nodelabels(ifelse(!is.na(s) & s >= 70, s, ""), frame = "none", cex = 0.45, adj = c(1.2, -0.4))
+  add.scale.bar(cex = 0.6)
+  legend("bottomright", legend = tree_levels, text.col = region_cols, bty = "n", cex = 0.7)
+}
+png(file.path(fig_dir, "fig5_NJ_tree.png"), width = 8, height = max(8, 0.12 * Ntip(tree_rooted)),
+    units = "in", res = 300)
+draw_tree(); dev.off()
+draw_tree()
+
+
+# SIMILARITY TO THE HAWAIIAN STRAIN USED IN RESISTANT PAPAYA
+
+P <- as.matrix(dist.dna(dna, model = "raw", pairwise.deletion = TRUE))
+is_hi <- unname(country_of[rownames(P)]) == "USA (Hawaii)"
+has_hawaii <- sum(is_hi) > 0
+cat("Hawaiian reference sequences:", sum(is_hi), "\n")
+if (!has_hawaii) cat("No Hawaiian sequences passed QC - the next chunk is skipped.\n")
+
+# ---- hawaii ----
+if (has_hawaii) {
+  ident <- tibble(label    = rownames(P)[!is_hi],
+                  region   = reg[!is_hi],
+                  country  = unname(country_of[rownames(P)[!is_hi]]),
+                  identity = 100 * (1 - apply(P[!is_hi, is_hi, drop = FALSE], 1, min)))
+  write_csv(ident, file.path(res_dir, "identity_to_hawaii.csv"))
+
+  ident |> group_by(region) |>
+    summarise(n = n(), mean_identity = mean(identity), min_identity = min(identity)) |>
+    arrange(mean_identity) |>
+    knitr::kable(digits = 1, caption = "CP identity (%) to the closest Hawaiian strain")
+
+  if (any(ident$country == "Sri Lanka")) {
+    knitr::kable(filter(ident, country == "Sri Lanka"), digits = 1,
+                 caption = "Sri Lankan sequences: identity to the Hawaiian strain")
+  }
+
+  # H2: does identity to the Hawaiian strain differ between regions?
+  kw_hi <- kruskal.test(identity ~ factor(region), data = ident)
+  kw_hi
+
+  p_hi <- ggplot(ident, aes(reorder(region, identity, FUN = median), identity)) +
+    geom_boxplot(outlier.shape = NA, fill = "grey90") +
+    geom_jitter(width = 0.15, size = 1.2, alpha = 0.7) + coord_flip() +
+    labs(x = NULL, y = "CP identity to closest Hawaiian strain (%)",
+         title = "How similar are PRSV strains to the Hawaiian strain?") +
+    theme_bw()
+  save_gg(p_hi, "fig6_identity_to_hawaii.png", h = 4.5)
+}
